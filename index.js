@@ -394,6 +394,17 @@ LockMechanism.prototype = {
  	}
 }
 
+	// sleep function
+	function sleep(milliseconds) {
+	  var start = new Date().getTime();
+	  for (var i = 0; i < 1e7; i++) {
+		if ((new Date().getTime() - start) > milliseconds){
+		  console.log("sleeping for "+milliseconds+" milliseconds");
+		  break;
+		}
+	  }
+	}
+	
 function RollerShutter(accesory, log, config) {
 	if(config.pins.length != 2) throw new Error("'pins' parameter must contains 2 pin numbers");
 
@@ -406,6 +417,7 @@ function RollerShutter(accesory, log, config) {
 	this.restoreTarget = config.restoreTarget || false;
 	this.shiftDuration = (config.shiftDuration || 20) * 10; // Shift duration in ms for a move of 1%
 	this.pulseDuration = config.pulseDuration !== undefined ? config.pulseDuration : 200;
+	this.invertStopPin = config.invertStopPin || false;
 	this.openSensorPin = config.openSensorPin !== undefined ? config.openSensorPin : null;
 	this.closeSensorPin = config.closeSensorPin !== undefined ? config.closeSensorPin : null;
 	this.invertedInputs = config.invertedInputs || false;
@@ -431,6 +443,7 @@ function RollerShutter(accesory, log, config) {
 	this.positionCharac = this.service.getCharacteristic(Characteristic.CurrentPosition);
 	this.targetCharac = this.service.getCharacteristic(Characteristic.TargetPosition)
 		.on('set', this.setPosition.bind(this));
+	
 	
 	// Configure inputs
 	if(this.openSensorPin !== null) {
@@ -511,11 +524,18 @@ RollerShutter.prototype = {
 	
 	motionEnd: function() {
 		if(this.shift.target < 100 && this.shift.target > 0) {
-			//this.pinPulse(this.shift.value, false); // Stop shutter by pulsing same pin another time
-			var pin = this.shift.value > 0 ? this.closePin : this.openPin;
-			wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
-			wpi.delay(this.pulseDuration);
-			wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
+			if(this.invertStopPin === true) {
+				// stop shutter by pulsing the opposite pin
+				var pin = this.shift.value > 0 ? this.closePin : this.openPin;
+				wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
+				wpi.delay(this.pulseDuration);
+				wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
+				this.log("Using opposite pin, "+pin+" to stop motion");
+				sleep(500); // delay next pinout
+			} else { 
+				this.pinPulse(this.shift.value, false); // Stop shutter by pulsing same pin another time
+				sleep(500); // delay next pinout
+			}
 		}
 		
 		if(this.restoreTarget) {
@@ -540,6 +560,7 @@ RollerShutter.prototype = {
 			wpi.digitalWrite(pin, this.OUTPUT_ACTIVE);
 			wpi.delay(this.pulseDuration);
 			wpi.digitalWrite(pin, this.OUTPUT_INACTIVE);
+			sleep(500); // delay next pinout
 		} else {
 			if(start) {
 				this.log('Start ' + pin + ' / Stop ' + oppositePin);
